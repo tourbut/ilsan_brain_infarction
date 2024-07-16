@@ -21,6 +21,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
                  add_context=False, 
                  sex_text=None, 
                  age_text=None,
+                 prompt=None,
                  ):
         self.image_files = image_files
         self.image_transform = image_transform
@@ -31,18 +32,10 @@ class Text_Image_Dataset(Dataset, Randomizable):
             assert sex_text is not None and age_text is not None
         self.sex_text = sex_text
         self.age_text = age_text
-        self.priming = 'You are a neurologist and now you are analyzing T2-weighted and FLAIR images from subjects who may be diagnosed with stroke.'
-        self.quest = 'Question: In the following options, what will this subject be diagnosed with? \
-            Options: \
-            (a) left middle cerebral artery \
-            (b) right middle cerebral artery \
-            (c) left anterior cerebral artery \
-            (d) right anterior cerebral artery \
-            (e) left posterior cerebral artery \
-            (f) right posterior cerebral artery \
-            (g) normal (no stroke). '
+        self.priming = prompt.priming
+        self.quest = prompt.quest
         self.qna_template = self.quest + "Answer: "
-        self.ans_template = "This subject will be diagnosed with"
+        self.ans_template = prompt.ans_template
         self.image_loader = LoadImage(reader=None, image_only=True, dtype=np.float32)    # use default reader of LoadImage
         self.set_random_state(seed=get_seed())
         self._seed = 0
@@ -56,7 +49,8 @@ class Text_Image_Dataset(Dataset, Randomizable):
             if isinstance(self.image_transform, Randomizable): 
                 self.image_transform.set_random_state(seed=self._seed)
             image = apply_transform(self.image_transform, image, map_items=False)
-            image = torch.tensor(image)
+            #image = torch.tensor(image)
+            image = image.clone().detach()
         return image
     
     def __transform_text__(self, reports, label, add_context=False, sex=None, age=None):
@@ -98,10 +92,11 @@ class Text_Image_Dataset(Dataset, Randomizable):
 
 
 class  Text_Image_DataModule(pl.LightningDataModule):
-    def __init__(self, config:dict = None, img_dir:str = None, meta_dir:str = None):
+    def __init__(self, config:dict = None, img_dir:str = None, meta_dir:str = None,prompt:dict=None):
         self.save_hyperparameters(config)
         self.img_dir = img_dir
         self.meta_dir = meta_dir
+        self.prompt = prompt
         self.setup()
         self.prepare_data_per_node=True
 
@@ -125,7 +120,7 @@ class  Text_Image_DataModule(pl.LightningDataModule):
 
 
 
-    def get_dataset(self, img_dir=None, meta_dir=None): 
+    def get_dataset(self, img_dir=None, meta_dir=None, prompt:dict=None): 
         ## loading meta data 
         if meta_dir is None: 
             raise ValueError("YOU SHOULD SPECIFY A DIRECTORY OF META DATA IN a '/config/*.yaml' FILE")
@@ -150,7 +145,6 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         train_images = [os.path.join(img_dir, img) for img in meta_data['BET_output_path'].values[shuffle_idx[:train_subj]]]
         val_images = [os.path.join(img_dir, img) for img in meta_data['BET_output_path'].values[shuffle_idx[train_subj:train_subj+val_subj]]]
         test_images = [os.path.join(img_dir, img) for img in meta_data['BET_output_path'].values[shuffle_idx[train_subj+val_subj:]]]
-
         ## split text 
         train_text = meta_data['reports'].values[shuffle_idx[:train_subj]]
         val_text = meta_data['reports'].values[shuffle_idx[train_subj:train_subj+val_subj]]
@@ -173,28 +167,27 @@ class  Text_Image_DataModule(pl.LightningDataModule):
             test_age = meta_data['age'].values[shuffle_idx[train_subj+val_subj:]]
             
             ## prepare dataset    
-            train_dataset = Text_Image_Dataset(image_files=train_images, image_transform=self.define_image_augmentation(mode='train'), reports_text=train_text, label_text=train_label,  add_context=True, sex_text=train_sex, age_text=train_age)
-            val_dataset = Text_Image_Dataset(image_files=val_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=val_text, label_text=val_label,  add_context=True, sex_text=val_sex, age_text=val_age)
-            test_dataset = Text_Image_Dataset(image_files=test_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=test_text, label_text=test_label,  add_context=True, sex_text=test_sex, age_text=test_age)
+            train_dataset = Text_Image_Dataset(image_files=train_images, image_transform=self.define_image_augmentation(mode='train'), reports_text=train_text, label_text=train_label,  add_context=True, sex_text=train_sex, age_text=train_age, prompt=prompt)
+            val_dataset = Text_Image_Dataset(image_files=val_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=val_text, label_text=val_label,  add_context=True, sex_text=val_sex, age_text=val_age, prompt=prompt)
+            test_dataset = Text_Image_Dataset(image_files=test_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=test_text, label_text=test_label,  add_context=True, sex_text=test_sex, age_text=test_age, prompt=prompt)
         else: 
             ## prepare dataset    
-            train_dataset = Text_Image_Dataset(image_files=train_images, image_transform=self.define_image_augmentation(mode='train'), reports_text=train_text, label_text=train_label,  add_context=False, sex_text=None, age_text=None)
-            val_dataset = Text_Image_Dataset(image_files=val_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=val_text, label_text=val_label,  add_context=False, sex_text=None, age_text=None)
-            test_dataset = Text_Image_Dataset(image_files=test_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=test_text, label_text=test_label,  add_context=False, sex_text=None, age_text=None)
+            train_dataset = Text_Image_Dataset(image_files=train_images, image_transform=self.define_image_augmentation(mode='train'), reports_text=train_text, label_text=train_label,  add_context=False, sex_text=None, age_text=None, prompt=prompt)
+            val_dataset = Text_Image_Dataset(image_files=val_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=val_text, label_text=val_label,  add_context=False, sex_text=None, age_text=None, prompt=prompt)
+            test_dataset = Text_Image_Dataset(image_files=test_images, image_transform=self.define_image_augmentation(mode='eval'), reports_text=test_text, label_text=test_label,  add_context=False, sex_text=None, age_text=None, prompt=prompt)
         return train_dataset, val_dataset, test_dataset
 
     def prepare_data(self):
         return
     
     def setup(self, stage=None): 
-        train_dataset, val_dataset, test_dataset = self.get_dataset(img_dir=self.img_dir, meta_dir=self.meta_dir)
+        train_dataset, val_dataset, test_dataset = self.get_dataset(img_dir=self.img_dir, meta_dir=self.meta_dir,prompt=self.prompt)
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
-
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.hparams.training_parameters.batch_size)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=self.hparams.training_parameters.batch_size)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.hparams.training_parameters.batch_size)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.hparams.training_parameters.batch_size,num_workers=self.hparams.training_parameters.num_workers)
+        self.val_loader = DataLoader(self.val_dataset, batch_size=self.hparams.training_parameters.batch_size,num_workers=self.hparams.training_parameters.num_workers)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.hparams.training_parameters.batch_size,num_workers=self.hparams.training_parameters.num_workers)
 
 
     def train_dataloader(self):

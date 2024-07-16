@@ -49,7 +49,7 @@ training_parameters:
     lr_scheduler: 
 
 pl_trainer: 
-    max_epochs: 1
+    max_epochs: 100
     devices: 3
     accelerator: 'gpu'
     precision: 'bf16'

@@ -5,7 +5,7 @@
 # ref 5: https://github.com/QwenLM/Qwen/blob/main/finetune.py#L172
 
 
-import os 
+import os
 import torch
 import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
@@ -387,6 +387,9 @@ class Brain_BLIP(Blip2Base):
         ):
         # get image embedding
         image = batch["image"]
+        print('image',image.device)
+        image = image.to(self.visual_encoder.device)
+        print('image',image.device)
         image_embeds = self.ln_vision(self.visual_encoder(image))
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
 
@@ -456,14 +459,17 @@ class Brain_BLIP(Blip2Base):
             Returns:
             - Tensor of token IDs for the best beam.
             """
+            print('model',model.dtype)
+            print('input_embeds',input_embeds.dtype)
             eos_token_id = model.config.eos_token_id
             device = input_embeds.device
             seq_len = input_embeds.size(1)
             embedding_dim = input_embeds.size(2)
             batch_size = input_embeds.size(0)
-
+            #model = model.float()
             # Initialize beams
             beams = input_embeds.repeat_interleave(k, dim=0)
+            print('beams',beams.dtype)
             beams_attention_mask = attention_mask.repeat_interleave(k, dim=0)
             beam_scores = torch.zeros(batch_size * k, device=device)
 
@@ -514,6 +520,10 @@ class Brain_BLIP(Blip2Base):
             best_beams_attention_mask = [beams_attention_mask[i * k + completed_beam_scores[i].argmax()].unsqueeze(0) for i in range(batch_size)]
             best_beams = torch.cat(best_beams, dim=0)
             best_beams_attention_mask = torch.cat(best_beams_attention_mask, dim=0)
+            
+            print('best_beams',best_beams.dtype)
+            print('model',model.dtype)
+            
             outputs = model(inputs_embeds=best_beams, attention_mask=best_beams_attention_mask)
             generated_token_id = outputs.logits[:, -1, :].argmax(axis=-1)
             return tokenizer.batch_decode(generated_token_id, skip_special_tokens=True)
@@ -557,14 +567,17 @@ class Brain_BLIP_pl(pl.LightningModule):
                                         accumulation_steps=self.hparams.training_parameters.accumulation_steps,
                                         base_lr=self.hparams.training_parameters.learning_rate)
         self.validation_step_outputs = None
-
+    
+    def generate(self,batch):
+        return self.model.generate(batch)
+    
     def training_step(self, batch, batch_idx): 
         loss, loss_dict = self.model(batch, int(self.global_rank))
         self.log_dict({
             "train_loss_itc": loss_dict['loss_itc'],
             "train_loss_inst": loss_dict['loss_inst'],
             "train_loss_total": loss_dict['loss_total']
-        })
+        }, sync_dist=True)
         torch.cuda.empty_cache()
         return loss
      
@@ -575,7 +588,7 @@ class Brain_BLIP_pl(pl.LightningModule):
             "valid_loss_itc": loss_dict['loss_itc'],
             "valid_loss_inst": loss_dict['loss_inst'],
             "valid_loss_total": loss_dict['loss_total']
-        })
+        }, sync_dist=True)
         """
         if batch_idx == 0: 
             sample_result_dict = {'input': batch,
@@ -587,12 +600,13 @@ class Brain_BLIP_pl(pl.LightningModule):
 
 
     def test_step(self,batch, batch_idx): 
-        _, loss_dict = self.model(batch, int(self.global_rank))
+        outputs, loss_dict = self.model(batch, int(self.global_rank))
+        print(outputs)
         self.log_dict({
             "test_loss_itc": loss_dict['loss_itc'],
             "test_loss_inst": loss_dict['loss_inst'],
             "vest_loss_total": loss_dict['loss_total']
-        })
+        }, sync_dist=True)
 
     """
     def on_validation_epoch_end(self): 
