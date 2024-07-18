@@ -54,3 +54,4 @@ pl_trainer:
     strategy: 'DDP'
     logger: "wandb" 
     log_every_n_steps: 1
+    ckpt_dir: "/storage/lab01/ilsan_brain_infarction/checkpoints"

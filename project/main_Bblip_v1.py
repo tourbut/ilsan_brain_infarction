@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 
 import torch
 import pytorch_lightning as pl 
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import  WandbLogger
 from dataset.dataset import Text_Image_DataModule
 from model.eva_vit import Brain_BLIP_image
@@ -62,6 +63,15 @@ def __main__():
     torch.cuda.empty_cache()
     model = Brain_BLIP_pl(config=config, lm_tokenizer=lm_tokenizer, lm_model=lm_model)
     
+    checkpoint_callback = ModelCheckpoint(
+        save_top_k=2,
+        monitor="valid_loss_total",
+        mode="min",
+        dirpath=config.pl_trainer.ckpt_dir,
+        filename="{epoch:02d}-{valid_loss_total:.2f}",
+    )
+    
+    
     ### initialize trainer 
     trainer = pl.Trainer(
         max_epochs=config.pl_trainer.max_epochs,
@@ -72,6 +82,7 @@ def __main__():
         precision=config.pl_trainer.precision,
         logger=logger,
         log_every_n_steps=config.pl_trainer.log_every_n_steps, 
+        callbacks=[checkpoint_callback],
     )
 
     # training 
