@@ -25,8 +25,9 @@ def __main__():
     time_hash = datetime.datetime.now().time()
     hash_key = hashlib.sha1(str(time_hash).encode()).hexdigest()[:6]
 
-    config = OmegaConf.load("./project/config/Brain_blip_v1_train_single_gpu_sample.yaml") 
+    #config = OmegaConf.load("./project/config/Brain_blip_v1_train_single_gpu_sample.yaml") 
     #config = OmegaConf.load("./project/config/Brain_blip_v1_train_single_gpu.yaml") 
+    config = OmegaConf.load("./project/config/Brain_blip_v1_train_single_gpu_1000.yaml") 
 
     ### setting logger 
     wandb.login(key=config.wandb.API_KEY)
@@ -52,9 +53,16 @@ def __main__():
     Because of the compatibility between huggingface, torch lightning, and Deepspeed, 
     language model is initialized outside of the pytorch_lightning.Module().
     """
-    lm_tokenizer = AutoTokenizer.from_pretrained(config.model.language_encoder.lm_model, device_map='sequential',trust_remote_code=True, pad_token='<|extra_0|>')
+    lm_tokenizer = AutoTokenizer.from_pretrained(config.model.language_encoder.lm_model,
+                                                 #device_map='sequential',
+                                                 trust_remote_code=True, 
+                                                 pad_token='<|extra_0|>')
     lm_tokenizer.pad_token_id = lm_tokenizer.eod_id
-    lm_model = AutoModelForCausalLM.from_pretrained(config.model.language_encoder.lm_model, device_map="sequential", fp16=True, trust_remote_code=True).eval().to('cpu')
+    lm_model = AutoModelForCausalLM.from_pretrained(config.model.language_encoder.lm_model, 
+                                                    #device_map="sequential", 
+                                                    fp16=True, 
+                                                    trust_remote_code=True
+                                                    ).eval()
     # disabling flash attention
     if config.model.language_encoder.use_flash_attn is False: 
         for i in range(len(lm_model.transformer.h)):
@@ -91,17 +99,7 @@ def __main__():
     # save model
     #trainer.save_checkpoint(f"{config.model.checkpoint_path}/{hash_key}", weights_only=True)
     
-    # testing
-    test_loader = DataModule.test_dataloader()
-    
-    for data in test_loader:
-        inputs = data
-        labels = data['label']
-        
-        outputs = model.generate(inputs)
-        print('outputs',outputs)
-        print('labels',labels)
-        
+
     
 
 if __name__ == '__main__': 
