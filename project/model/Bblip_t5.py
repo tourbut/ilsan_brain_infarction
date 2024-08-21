@@ -164,28 +164,63 @@ class Brain_BLIP_pl(pl.LightningModule):
     def summarize_model_performance(self, target, pred): 
         def _one_hot_encoder(text):
             """
-            (a)left middle cerebral artery 
-            (b)right middle cerebral artery 
-            (c)left anterior cerebral artery 
-            (d)right anterior cerebral artery 
-            (e)left posterior cerebral artery 
-            (f)right posterior cerebral artery 
-            (g)no stroke. 
+            text	label
+            This subject does not have any brain lesion.	0
+            This subject has an Acute brain lesion.	1
+            This subject has an Acute brain lesion characterized by hemorrhage.	2
+            This subject has an Acute brain lesion characterized by ICH.	3
+            This subject has an Acute brain lesion characterized by infarction.	4
+            This subject has an Recent brain lesion.	5
+            This subject has an Recent brain lesion characterized by hemorrhage.	6
+            This subject has an Recent brain lesion characterized by ICH.	7
+            This subject has an Recent brain lesion characterized by infarction.	8
+            This subject has an Chronic brain lesion.	9
+            This subject has an Chronic brain lesion characterized by hemorrhage.	10
+            This subject has an Chronic brain lesion characterized by ICH.	11
+            This subject has an Chronic brain lesion characterized by infarction.	12
+            This subject has an Old brain lesion.	13
+            This subject has an Old brain lesion characterized by hemorrhage.	14
+            This subject has an Old brain lesion characterized by ICH.	15
+            This subject has an Old brain lesion characterized by infarction.	16
+
             """
-            if text == "(a)left middle cerebral artery":
+            if text == "This subject does not have any brain lesion.":
                 value = 0 
-            elif text == "(b)right middle cerebral artery":
+            elif text == "This subject has an Acute brain lesion.":
                 value = 1
-            elif text == "(c)left anterior cerebral artery":
+            elif text == "This subject has an Acute brain lesion characterized by hemorrhage.":
                 value = 2 
-            elif text == "(d)right anterior cerebral artery":
+            elif text == "This subject has an Acute brain lesion characterized by ICH.":
                 value = 3 
-            elif text == "(e)left posterior cerebral artery":
+            elif text == "This subject has an Acute brain lesion characterized by infarction.":
                 value = 4 
-            elif text == "(f)right posterior cerebral artery":
-                value = 5 
-            elif text == "(g)no stroke":
-                value = 6
+            elif text == "This subject has an Recent brain lesion.":
+                value = 5
+            elif text == "This subject has an Recent brain lesion characterized by hemorrhage.":
+                value = 6 
+            elif text == "This subject has an Recent brain lesion characterized by ICH.":
+                value = 7 
+            elif text == "This subject has an Recent brain lesion characterized by infarction.":
+                value = 8 
+            elif text == "This subject has an Chronic brain lesion.":
+                value = 9
+            elif text == "This subject has an Chronic brain lesion characterized by hemorrhage.":
+                value = 10 
+            elif text == "This subject has an Chronic brain lesion characterized by ICH.":
+                value = 11
+            elif text == "This subject has an Chronic brain lesion characterized by infarction.":
+                value = 12
+            elif text == "This subject has an Old brain lesion.":
+                value = 13
+            elif text == "This subject has an Old brain lesion characterized by hemorrhage.":
+                value = 14
+            elif text == "This subject has an Old brain lesion characterized by ICH.":
+                value = 15
+            elif text == "This subject has an Old brain lesion characterized by infarction.":
+                value = 16
+            else: 
+                value = -1
+                
             return value  
 
         assert type(target) == type(pred) == list 
@@ -194,11 +229,12 @@ class Brain_BLIP_pl(pl.LightningModule):
         target_list = [] 
         pred_list = []
         for target_text, pred_text in zip(target, pred): 
-            print(f"[DEBEG] GT: {target_text}\nPRED: {pred_text}")
             target_value = _one_hot_encoder(target_text)
             target_list.append(target_value)
             pred_value = _one_hot_encoder(pred_text)
             pred_list.append(pred_value)
+            
+            #print(f"[DEBEG] GT(Label): ({target_value}){target_text} PRED(Label): ({pred_value}){pred_text}")
         return accuracy_score(target_list, pred_list)
 
 
