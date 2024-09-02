@@ -24,7 +24,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.trainer_pt_utils import LabelSmoother
 
 import loralib as lora
-#from deepspeed.ops.adam import FusedAdam, DeepSpeedCPUAdam
+
 
 from sklearn.metrics import accuracy_score, roc_auc_score, r2_score
 
@@ -48,7 +48,8 @@ class Brain_BLIP(Blip2Base):
         # make new 3D patch embedding layer and positional embedding
         patch_embed_3d = PatchEmbed(
             img_size=img_size, 
-            patch_size=self.model.visual_encoder.patch_embed.proj.kernel_size[0], 
+            #patch_size=self.model.visual_encoder.patch_embed.proj.kernel_size[0], 
+            patch_size=18,
             in_chans=1, 
             embed_dim=int(self.model.visual_encoder.patch_embed.proj.out_channels))
         num_patches = patch_embed_3d.num_patches
@@ -161,7 +162,7 @@ class Brain_BLIP_pl(pl.LightningModule):
         self.validation_step_outputs = None
 
 
-    def summarize_model_performance(self, target, pred): 
+    def summarize_model_performance(self, target, pred, ): 
         def _one_hot_encoder(text):
             """
             text	label
@@ -184,43 +185,62 @@ class Brain_BLIP_pl(pl.LightningModule):
             This subject has an Old brain lesion characterized by infarction.	16
 
             """
-            if text == "This subject does not have any brain lesion.":
+            """
+            if "This subject does not have any brain lesion." in text:
                 value = 0 
-            elif text == "This subject has an Acute brain lesion.":
+            elif "This subject has an Acute brain lesion." in text:
                 value = 1
-            elif text == "This subject has an Acute brain lesion characterized by hemorrhage.":
+            elif "This subject has an Acute brain lesion characterized by hemorrhage." in text:
                 value = 2 
-            elif text == "This subject has an Acute brain lesion characterized by ICH.":
+            elif "This subject has an Acute brain lesion characterized by ICH." in text:
                 value = 3 
-            elif text == "This subject has an Acute brain lesion characterized by infarction.":
+            elif "This subject has an Acute brain lesion characterized by infarction." in text:
                 value = 4 
-            elif text == "This subject has an Recent brain lesion.":
+            elif "This subject has an Recent brain lesion." in text:
+                value = 1
+            elif "This subject has an Recent brain lesion characterized by hemorrhage." in text:
+                value = 2 
+            elif "This subject has an Recent brain lesion characterized by ICH." in text:
+                value = 3 
+            elif "This subject has an Recent brain lesion characterized by infarction." in text:
+                value = 4 
+            elif "This subject has an Chronic brain lesion." in text:
                 value = 5
-            elif text == "This subject has an Recent brain lesion characterized by hemorrhage.":
+            elif "This subject has an Chronic brain lesion characterized by hemorrhage." in text:
                 value = 6 
-            elif text == "This subject has an Recent brain lesion characterized by ICH.":
-                value = 7 
-            elif text == "This subject has an Recent brain lesion characterized by infarction.":
-                value = 8 
-            elif text == "This subject has an Chronic brain lesion.":
-                value = 9
-            elif text == "This subject has an Chronic brain lesion characterized by hemorrhage.":
-                value = 10 
-            elif text == "This subject has an Chronic brain lesion characterized by ICH.":
-                value = 11
-            elif text == "This subject has an Chronic brain lesion characterized by infarction.":
-                value = 12
-            elif text == "This subject has an Old brain lesion.":
-                value = 13
-            elif text == "This subject has an Old brain lesion characterized by hemorrhage.":
-                value = 14
-            elif text == "This subject has an Old brain lesion characterized by ICH.":
-                value = 15
-            elif text == "This subject has an Old brain lesion characterized by infarction.":
-                value = 16
+            elif "This subject has an Chronic brain lesion characterized by ICH." in text:
+                value = 7
+            elif "This subject has an Chronic brain lesion characterized by infarction." in text:
+                value = 8
+            elif "This subject has an Old brain lesion." in text:
+                value = 5
+            elif "This subject has an Old brain lesion characterized by hemorrhage." in text:
+                value = 6
+            elif "This subject has an Old brain lesion characterized by ICH." in text:
+                value = 7
+            elif "This subject has an Old brain lesion characterized by infarction." in text:
+                value = 8
             else: 
                 value = -1
-                
+            """
+            """
+            if text in "This subject does not have any brain lesion." :
+                value = 0 
+            elif text in "This subject has an Acute brain lesion.":
+                value = 1
+            elif text in "This subject has an Recent brain lesion.":
+                value = 1
+            elif text in "This subject has an Chronic brain lesion.":
+                value = 2
+            elif text in "This subject has an Old brain lesion.":
+                value = 2
+            else: 
+                value = -1
+            """
+            if "Yes" in text or "yes" in text: 
+                value = 0 
+            elif "No" in text or "no" in text:
+                value = 1
             return value  
 
         assert type(target) == type(pred) == list 
@@ -244,19 +264,20 @@ class Brain_BLIP_pl(pl.LightningModule):
         image, text, inst, answer, label = batch['image'], batch['text'], batch['inst'], batch['answer'], batch['label']
         batch['text_input'] = batch['inst']
         batch['text_output'] = batch['answer']
-
-
         loss, loss_dict, pred = self.model(batch, int(self.global_rank))
-        self.log_dict({
-            "train/loss": loss.item(),
-        }, sync_dist=True)
         
         try: 
             acc = self.summarize_model_performance(batch['text_output'], pred)
         except: 
             acc = -100
-        self.log_dict({'train/acc': acc})
+        
+        if batch_idx % 50 == 0: 
+            print(f"\nACC:{acc}\n GT: {batch['text_output'][:4]}\nPRED: {pred}")
             
+        self.log_dict({
+            "train/loss": loss.item(),
+            'train/acc': acc
+        }, sync_dist=True)
         torch.cuda.empty_cache()
         return loss
      
@@ -266,19 +287,21 @@ class Brain_BLIP_pl(pl.LightningModule):
         image, text, inst, answer, label = batch['image'], batch['text'], batch['inst'], batch['answer'], batch['label']
         batch['text_input'] = batch['inst']
         batch['text_output'] = batch['answer']
-
-
         loss, loss_dict, pred = self.model(batch, int(self.global_rank))
-        self.log_dict({
-            "valid/loss": loss.item(),
-        }, sync_dist=True)
-        if batch_idx % 20 == 0: 
-            print(f"GT: {batch['text_output'][:4]}\nPRED: {pred}")
+        
         try: 
             acc = self.summarize_model_performance(batch['text_output'], pred)
         except: 
             acc = -100
-        self.log_dict({'val/acc': acc})
+            
+        if batch_idx % 10 == 0: 
+            print(f"\nACC:{acc}\n GT: {batch['text_output'][:4]}\nPRED: {pred}")
+
+
+        self.log_dict({
+            "valid/loss": loss.item(),
+            'valid/acc': acc
+        }, sync_dist=True)
         
 
 
@@ -287,18 +310,23 @@ class Brain_BLIP_pl(pl.LightningModule):
         image, text, inst, answer, label = batch['image'], batch['text'], batch['inst'], batch['answer'], batch['label']
         batch['text_input'] = batch['inst']
         batch['text_output'] = batch['answer']
-
-
         loss, loss_dict, pred = self.model(batch, int(self.global_rank))
-        self.log_dict({
-            "test/loss": loss.item(),
-        }, sync_dist=True)
+    
 
         try: 
             acc = self.summarize_model_performance(batch['text_output'], pred)
         except: 
             acc = -100
-        self.log_dict({'test/acc': acc})
+        
+        
+        if batch_idx % 10 == 0: 
+            print(f"\nACC:{acc}\n GT: {batch['text_output'][:4]}\nPRED: {pred}")
+
+        
+        self.log_dict({
+            "test/loss": loss.item(),
+            'test/acc': acc
+        }, sync_dist=True)
 
     """
     def on_validation_epoch_end(self): 
@@ -317,7 +345,8 @@ class Brain_BLIP_pl(pl.LightningModule):
         # setting optimizers
         if self.hparams.training_parameters.optimizer == "AdamW": 
             if self.hparams.pl_trainer.strategy == 'DeepSpeed_Zero3_offload':
-                #optim = DeepSpeedCPUAdam(filter(lambda p: p.requires_grad, self.parameters()), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
+                from deepspeed.ops.adam import FusedAdam, DeepSpeedCPUAdam
+                optim = DeepSpeedCPUAdam(filter(lambda p: p.requires_grad, self.parameters()), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
                 #optim = DeepSpeedCPUAdam(self.parameters(), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
                 pass
             else:

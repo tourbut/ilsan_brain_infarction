@@ -17,16 +17,19 @@ image files should be structured as follows.
 
 
 ## Setting data directories 
-Absolute directories of image file and meta data should be respectively added to "img_dir" and "meta_dir"  in ```./project/config/Brain_blip_v1_train_single_gpu.yaml```.
+Absolute directories of image file and meta data should be respectively added to "img_dir" and "meta_dir"  in ```./project/config/Brain_blip_t5_train_single_gpu_curriculum_setting1.yaml```.
 
 ## Setting wandb service
-API key of your wandb account should be added to "API_KEY" in ```./project/config/Brain_blip_v1_train_single_gpu.yaml``` 
+API key of your wandb account should be added to "API_KEY" in ```./project/config/Brain_blip_t5_train_single_gpu_curriculum_setting1.yaml``` 
+
+## CAUTION 
+**THE CODE SHOULD BE RUN WITH SINGLE GPU. SOME ERRORS IN USING MULTIPLE GPUS.**
 
 # Example 
 ```
 cd {usr_dir}/project
 
-python3 main_Bblip_v1.py
+CUDA_VISIBLE_DEVICES=0 python3 main_Bblip_t5_curriculum.py
 
 ```
 

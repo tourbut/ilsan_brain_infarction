@@ -44,9 +44,11 @@ class Text_Image_Dataset(Dataset, Randomizable):
         self.sex_text = sex_text
         self.age_text = age_text
         self.priming = 'You are a neurologist and now you are analyzing diffusion weighted images from subjects who may be diagnosed with stroke.'
-        self.quest = "Question: Provide 'Yes' or 'No' answer as to whether this subject has a brain lesion. Answer: "
+        self.quest1 = "Question: Provide 'Yes' or 'No' answer as to whether this subject has a brain lesion. Answer: "
+        self.quest2 = "Question: If this subject has a brain lesion, is it acute or chronic? Answers with 'Acute' or 'Chronic'. Answer: "
+        self.quest3 = "Question: If this subject has a brain lesion, is it infarction or intracerebral hemorrhage or hemorrhage? Answers with 'Infarction' or 'Intracerebral hemorrhage' or 'hemorrhage'. Answer: "
         #self.quest = "Assess the subject's brain health status by evaluating the presence of any brain lesions, and if present, provide information on their injury time and characteristics. Answer: "
-        self.qna_template = self.quest + "Answer: "
+        #self.qna_template = self.quest + "Answer: "
         self.ans_template = "This subject will be diagnosed with"
         self.image_loader = LoadImage(reader=None, image_only=True, dtype=np.float32)    # use default reader of LoadImage
         self.set_random_state(seed=get_seed())
@@ -66,7 +68,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
     
     def __transform_text__(self, reports, label, add_context=False, sex=None, age=None):
         text = reports.replace("_x000D_\n", "")  # remove unnecessary spaces from text
-        answer = self.__transform_text_label_(label)
+        answer1, answer2, answer3 = self.__transform_text_label_(label)
         #answer = f'{self.ans_template} {label}.'
         inst = self.priming 
                 
@@ -78,8 +80,15 @@ class Text_Image_Dataset(Dataset, Randomizable):
             text = context + text 
             inst = inst + context 
         
-        inst = inst + text + self.quest
-        text = text + answer 
+        inst = {"inst1": inst + text + self.quest1,
+                "inst2": inst + text + self.quest2,
+                "inst3": inst + text + self.quest3,
+                }
+        answer = {"answer1": answer1,
+                  "answer2": answer2,
+                  "answer3": answer3,
+                  }
+        #text = text + answer 
         
         return text, inst, answer, label
     
@@ -89,14 +98,32 @@ class Text_Image_Dataset(Dataset, Randomizable):
     
         if lesion.split(" ")[-1] == "Y": 
             answer1= "Yes"
+            if injury_time.split(' ')[-1] in ["Acute","Recent"]:
+                answer2 = "Acute"
+            elif injury_time.split(' ')[-1] in ["Chronic","Old"]:
+                answer2 = "Chronic"
+            
+            if "nan" in character.split(' ')[-1]:
+                answer3 = "nan"  
+            else: 
+                if character.split(' ')[-1] in "infarction":
+                    answer3 = "Infarction"
+                elif character.split(' ')[-1] in "ICH":
+                    answer3 = "Intracerebral hemorrhage"
+                elif character.split(' ')[-1] in "hemorrhage":
+                    answer3 = "Hemorrhage"
+                else:
+                    print(character.split(' ')[-1])
             #answer1 = "Answer: yes"
             #answer2 = f"Answer 2: {injury_time.split(' ')[-1]} and {character.split(' ')[-1]}." 
         elif lesion.split(" ")[-1] == "N":
             answer1 = "No"
+            answer2 = "nan"
+            answer3 = "nan"
             #answer1 = "Answer: no"
             #answer2 = "" 
         #answer = f"{answer1}. {answer2}"
-        answer = answer1
+        #answer = answer1
         
         """
         if lesion.split(" ")[-1] == "Y": 
@@ -119,7 +146,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
         elif lesion.split(" ")[-1] == "N":
             answer = "This subject does not have any brain lesion."
         """
-        return answer 
+        return answer1, answer2, answer3 
 
 
 
@@ -186,7 +213,6 @@ class  Text_Image_DataModule(pl.LightningDataModule):
             NotImplementedError("This code need only meta data file of '.csv' or '.xlsx' format.")
         
         ## randomly assign subjects into train/val/test split
-        #total_subj = 20
         total_subj = len(meta_data)
         shuffle_idx = np.arange(total_subj)
         np.random.shuffle(shuffle_idx)
@@ -194,7 +220,14 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         assert self.hparams.train_size + self.hparams.val_size + self.hparams.test_size == 1
         train_subj = int(self.hparams.train_size * total_subj)
         val_subj = int(self.hparams.val_size * total_subj)
-        test_subj = total_subj - val_subj
+        test_subj = total_subj - train_subj - val_subj
+        print(f"Total Subj: {total_subj}")
+        print(f"Train Subj: {train_subj}")
+        print(f"Validation Subj: {val_subj}")
+        print(f"Test Subj: {test_subj}")
+        #train_subj = 80 
+        #val_subj = 10 
+        #test_subj = 10
 
         ## split image 
         train_images = [os.path.join(img_dir, img) for img in meta_data['BET_output_path'].values[shuffle_idx[:train_subj]]]
@@ -242,9 +275,9 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
 
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
+        self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
 
 
     def train_dataloader(self):

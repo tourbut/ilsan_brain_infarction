@@ -1,13 +1,13 @@
 import datetime
 import hashlib
-from model.Bblip_t5 import Brain_BLIP_pl
+from model.Bblip_t5_curriculum import Brain_BLIP_pl
 from omegaconf import OmegaConf
 
 import torch
 import pytorch_lightning as pl 
 from pytorch_lightning.loggers import  WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from dataset.dataset import Text_Image_DataModule
+from dataset.dataset_curriculum import Text_Image_DataModule
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from torch.distributed.fsdp.wrap import (
@@ -26,14 +26,16 @@ def __main__():
     time_hash = datetime.datetime.now().time()
     hash_key = hashlib.sha1(str(time_hash).encode()).hexdigest()[:6]
 
-    config = OmegaConf.load("./project/config/Brain_blip_t5_train_DDPmulti_gpu_hh.yaml") 
+    config = OmegaConf.load("./project/config/Brain_blip_t5_train_single_gpu_curriculum_setting2.yaml") 
 
     ### setting logger 
     wandb.login(key=config.wandb.API_KEY)
     logger = pl.loggers.WandbLogger(project="ilsan", name=f'{hash_key}')
     
     ### setting pytorch DDP 
-    if config.pl_trainer.strategy == 'DDP': 
+    if config.pl_trainer.strategy == 'DP':
+        strategy="dp" 
+    elif config.pl_trainer.strategy == 'DDP': 
         strategy = pl.strategies.DDPStrategy(process_group_backend="nccl",find_unused_parameters=False,)
     elif config.pl_trainer.strategy == 'DeepSpeed_Zero3_offload':
         strategy = pl.strategies.DeepSpeedStrategy(stage=3,  offload_optimizer=True, offload_parameters=True)
@@ -62,11 +64,12 @@ def __main__():
         
     ### checkpoint 
     checkpoint_callback = ModelCheckpoint(
-        save_top_k=2,
-        monitor="valid/loss",
+        save_top_k=1,
+        monitor="val/total_loss",
         mode="min",
+        #every_n_epochs=1,
         dirpath=config.pl_trainer.ckpt_dir,
-        filename="{epoch:02d}-{valid_loss_total:.2f}",
+        filename="{epoch:02d}-val_loss{val/total_loss:.2f}-all_data-setting2",
     )
 
     ### initialize trainer 
@@ -75,20 +78,18 @@ def __main__():
         devices=config.pl_trainer.devices,
         accelerator=config.pl_trainer.accelerator,
         num_nodes=config.pl_trainer.num_nodes,
+        log_every_n_steps=config.pl_trainer.log_every_n_steps,
         strategy=strategy,
         precision=config.pl_trainer.precision,
         logger=logger,
-        log_every_n_steps=config.pl_trainer.log_every_n_steps, 
         callbacks=[checkpoint_callback]
     )
 
     # training 
     trainer.fit(model, datamodule=DataModule)
-    # save checkpint
-    if config.pl_trainer.checkpoint_path is not None:
-        trainer.save_checkpoint(config.pl_trainer.checkpoint_path)
     
-
+    # test 
+    trainer.test(ckpt_path="best",datamodule=DataModule)
 
 if __name__ == '__main__': 
     __main__()
