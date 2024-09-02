@@ -1,5 +1,5 @@
 wandb:
-    API_KEY: "e8cb271ec197be5b866d92ce11ae09dd17d513c3"
+    API_KEY: ""
 
 dataset:
     img_dir: ""
