@@ -26,7 +26,7 @@ def __main__():
     time_hash = datetime.datetime.now().time()
     hash_key = hashlib.sha1(str(time_hash).encode()).hexdigest()[:6]
 
-    config = OmegaConf.load("./project/config/Brain_blip_t5_train_single_gpu_curriculum_setting2.yaml") 
+    config = OmegaConf.load("./project/config/Brain_blip_t5_train_single_gpu_curriculum_setting1.yaml") 
 
     ### setting logger 
     wandb.login(key=config.wandb.API_KEY)
@@ -57,7 +57,9 @@ def __main__():
     torch.cuda.empty_cache()
     
     if config.pl_trainer.resume_training:
-        model = Brain_BLIP_pl.load_from_checkpoint(checkpoint_path=config.pl_trainer.checkpoint_path, img_size=config.dataset.img_size)
+        checkpoint_path=config.pl_trainer.ckpt_dir+'/'+config.pl_trainer.ckpt_file
+        print(checkpoint_path)
+        model = Brain_BLIP_pl.load_from_checkpoint(checkpoint_path=checkpoint_path, img_size=config.dataset.img_size)
     else:
         model = Brain_BLIP_pl(config=config, img_size=config.dataset.img_size) 
     #model.cuda()
@@ -69,13 +71,13 @@ def __main__():
         mode="min",
         #every_n_epochs=1,
         dirpath=config.pl_trainer.ckpt_dir,
-        filename="{epoch:02d}-val_loss{val/total_loss:.2f}-all_data-setting2",
+        filename=hash_key+"_{epoch:02d}-val_loss{val/total_loss:.2f}-all_data-setting1",
     )
 
     ### initialize trainer 
     trainer = pl.Trainer(
         max_epochs=config.pl_trainer.max_epochs,
-        devices=config.pl_trainer.devices,
+        devices=[config.pl_trainer.devices],
         accelerator=config.pl_trainer.accelerator,
         num_nodes=config.pl_trainer.num_nodes,
         log_every_n_steps=config.pl_trainer.log_every_n_steps,
